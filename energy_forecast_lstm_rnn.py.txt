@@ -1,0 +1,84 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+
+from google.colab import drive
+drive.mount('/content/drive')
+
+train_path = '/content/drive/MyDrive/Ajoy ML Work/Prediction_RNN_LSTM/'
+
+dataset_train = pd.read_csv(train_path + 'electric_usage.csv')
+
+dataset_train.info()
+dataset_train.describe()
+
+training_set = dataset_train.iloc[:,1:2].values
+training_set[0:20,0]
+
+from sklearn.preprocessing import MinMaxScaler
+sc=MinMaxScaler(feature_range=(0,1))
+training_set_scaled = sc.fit_transform(np.array(training_set).reshape(-1,1))
+#print(training_set_scaled)
+training_set_scaled.shape
+
+import matplotlib.pyplot as plt
+plt.plot(training_set_scaled)
+
+#splitting dataset into train and test split
+training_size = int(len(training_set_scaled)*0.65)
+test_size = len(training_set_scaled)-training_size
+train_data,test_data = training_set_scaled[0:training_size,:],training_set_scaled[training_size:len(training_set_scaled),:1]
+
+#convert an array of values into a dataset matrix
+def create_dataset(dataset,time_step=1):
+    dataX,  dataY = [], []
+    for i in range(len(dataset)-time_step-1):
+        a = dataset[i:(i+time_step),0]   ###i=1, 0,1,2,3
+        dataX.append(a)
+        dataY.append(dataset[i +  time_step,0])
+    return np.array(dataX), np.array(dataY)
+
+#reshape into X=t,t+1,t+2,t+3 and Y=t+4
+time_step=100
+X_train,y_train = create_dataset(train_data, time_step)
+X_test, ytest = create_dataset(test_data, time_step)
+
+X_train.shape , y_train.shape
+
+
+#reshape input to be [samples,time steps, features] which is required for LTSM
+X_train = np.reshape(X_train, (X_train.shape[0],X_train.shape[1],1))
+X_test = np.reshape(X_test, (X_test.shape[0],X_test.shape[1],1))
+
+
+### Create the LTSM model
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import LSTM
+from tensorflow.keras.layers import Dropout
+
+regressor = Sequential()
+#Adding the first LSTM Layer and some Dropout regualarization
+regressor.add(LSTM(units = 50, return_sequences = True, input_shape = (X_train.shape[1],1)))
+regressor.add(Dropout(0.2))
+regressor.add(LSTM(units = 50, return_sequences = True))
+regressor.add(Dropout(0.2))	
+regressor.add(LSTM(units = 50, return_sequences = True))
+regressor.add(Dropout(0.2))
+regressor.add(LSTM(units = 50))
+regressor.add(Dropout(0.2))
+regressor.add(Dense(units =1))
+regressor.compile(optimizer = 'adam', loss = 'mean_squared_error')
+regressor.summary
+regressor.fit(X_train,y_train,epochs=100,batch_size=32)
+predict_rate = regressor.predict(X_test)
+predict_rate = sc.inverse_transform(predict_rate)
+
+#Visualize the results
+plt.plot(training_set , color  = 'red', label = 'Historic Energy Usage')
+plt.plot(predict_rate, color = 'blue',  label = 'Predicted Energy Usage')
+plt.title('Energy usage Prediction')
+plt.xlabel('Time')
+plt.ylabel('Energy Usage')
+plt.legend()
+plt.show()
